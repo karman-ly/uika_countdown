@@ -1,4 +1,6 @@
 use crate::tui::Tui;
+use color_eyre::eyre::{bail, WrapErr};
+use color_eyre::Result;
 use crossterm::event;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::buffer::Buffer;
@@ -8,7 +10,6 @@ use ratatui::symbols::border;
 use ratatui::text::{Line, Text};
 use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{Block, Borders, Paragraph, Widget};
-use std::io;
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -17,31 +18,44 @@ pub struct App {
 }
 
 impl App {
-    pub fn run(&mut self, terminal: &mut Tui) -> io::Result<()> {
+    pub fn run(&mut self, terminal: &mut Tui) -> Result<()> {
         while !self.exit {
             terminal.draw(|frame| frame.render_widget(&*self, frame.size()))?;
-            self.handle_events()?;
+            self.handle_events().wrap_err("handle events failed")?;
         }
         Ok(())
     }
 
-    fn handle_events(&mut self) -> io::Result<()> {
+    fn handle_events(&mut self) -> Result<()> {
         match event::read()? {
-            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
-            }
-            _ => {}
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => self
+                .handle_key_event(key_event)
+                .wrap_err_with(|| format!("handling key event failed:\n{key_event:#?}")),
+            _ => Ok(()),
         }
-        Ok(())
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<()> {
         match key_event.code {
             KeyCode::Char('q') => self.exit = true,
-            KeyCode::Up => self.counter += 1,
-            KeyCode::Down => self.counter -= 1,
+            KeyCode::Up => self.increment()?,
+            KeyCode::Down => self.decrement()?,
             _ => {}
         }
+        Ok(())
+    }
+
+    fn increment(&mut self) -> Result<()> {
+        self.counter += 1;
+        if self.counter > 2 {
+            bail!("counter overflow");
+        }
+        Ok(())
+    }
+
+    fn decrement(&mut self) -> Result<()> {
+        self.counter -= 1;
+        Ok(())
     }
 }
 
@@ -50,7 +64,7 @@ impl Widget for &App {
     where
         Self: Sized,
     {
-        let title = Title::from(" Uika Counter App ".bold());
+        let title = Title::from(" Uika Countdown App ".bold());
         let instructions = Title::from(Line::from(vec![
             " Decrement".into(),
             " <Down>".blue().bold(),
