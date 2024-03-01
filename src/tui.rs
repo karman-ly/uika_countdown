@@ -1,11 +1,10 @@
-use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+use std::io::{self, stdout, Stdout};
+
+use crossterm::{
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
 };
-use crossterm::ExecutableCommand;
-use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
-use std::io;
-use std::io::{stdout, Stdout};
+use ratatui::{backend::CrosstermBackend, Terminal};
 
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 

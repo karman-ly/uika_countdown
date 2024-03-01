@@ -1,8 +1,8 @@
+use app::App;
+
 mod app;
 mod errors;
 mod tui;
-
-use app::App;
 
 fn main() -> color_eyre::Result<()> {
     errors::install_hooks()?;

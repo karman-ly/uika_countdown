@@ -1,15 +1,21 @@
+use color_eyre::{
+    eyre::{bail, WrapErr},
+    Result,
+};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use ratatui::{
+    buffer::Buffer,
+    layout::{Alignment, Rect},
+    style::Stylize,
+    symbols::border,
+    text::{Line, Text},
+    widgets::{
+        block::{Position, Title},
+        Block, Borders, Paragraph, Widget,
+    },
+};
+
 use crate::tui::Tui;
-use color_eyre::eyre::{bail, WrapErr};
-use color_eyre::Result;
-use crossterm::event;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Rect};
-use ratatui::style::Stylize;
-use ratatui::symbols::border;
-use ratatui::text::{Line, Text};
-use ratatui::widgets::block::{Position, Title};
-use ratatui::widgets::{Block, Borders, Paragraph, Widget};
 
 #[derive(Debug, Default)]
 pub struct App {
