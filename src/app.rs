@@ -57,7 +57,7 @@ impl Widget for &App {
             " Increment".into(),
             " <Up>".blue().bold(),
             " Quit".into(),
-            "<Q> ".blue().bold(),
+            " <Q> ".blue().bold(),
         ]));
         let block = Block::default()
             .title(title.alignment(Alignment::Center))
