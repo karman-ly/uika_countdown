@@ -1,9 +1,9 @@
-use std::{env, fs::File, io, ops::Deref};
+use crate::tui::Tui;
 use chrono::{DateTime, Local};
-use color_eyre::{Result, eyre::bail};
+use color_eyre::{eyre::bail, Result};
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
-use crate::tui::Tui;
+use std::{env, fs::File, io, ops::Deref};
 
 const TIMERS_FILENAME: &str = "timers.csv";
 
