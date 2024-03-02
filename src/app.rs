@@ -1,8 +1,11 @@
 use crate::tui::Tui;
 use chrono::{DateTime, Local};
-use color_eyre::{eyre::bail, Result};
+use color_eyre::{
+    eyre::{self, bail},
+    Result,
+};
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
-use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
+use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 use std::{env, fs::File, io, ops::Deref};
 
 const TIMERS_FILENAME: &str = "timers.csv";
@@ -33,6 +36,21 @@ impl Timers {
     }
 }
 
+impl TryFrom<csv::Reader<File>> for Timers {
+    type Error = eyre::Error;
+    fn try_from(mut rdr: csv::Reader<File>) -> Result<Self, Self::Error> {
+        let timers = Vec::new();
+        let selected_idx = rdr
+            .records()
+            .position(|record| record.is_ok_and(|r| &r[3] == "1"))
+            .unwrap_or(0);
+        Ok(Timers {
+            selected_idx,
+            timers,
+        })
+    }
+}
+
 #[derive(Debug, Default)]
 enum State {
     #[default]
@@ -43,37 +61,26 @@ enum State {
 #[derive(Debug)]
 struct Timer {
     name: String,
+    color: Color,
     datetime: DateTime<Local>,
 }
 
-fn parse_timers(mut rdr: csv::Reader<File>) -> Result<Timers> {
-    let mut timers = Vec::new();
-    let mut selected_timer_idx = 0;
-    for (i, res) in rdr.records().enumerate() {
-        let record = res?;
-        let name = &record[0];
-        let datetime = record[1].parse()?;
-        selected_timer_idx = if &record[2] == "1" {
-            i
-        } else {
-            selected_timer_idx
-        };
-        timers.push(Timer {
-            name: name.into(),
-            datetime,
+impl TryFrom<csv::StringRecord> for Timer {
+    type Error = eyre::Error;
+    fn try_from(record: csv::StringRecord) -> Result<Self, Self::Error> {
+        Ok(Self {
+            name: record[0].into(),
+            color: record[1].parse()?,
+            datetime: record[2].parse()?,
         })
     }
-    Ok(Timers {
-        selected_idx: selected_timer_idx,
-        timers,
-    })
 }
 
 impl App {
     pub fn new() -> Result<Self> {
         match csv::Reader::from_path(env::current_dir()?.with_file_name(TIMERS_FILENAME)) {
             Ok(rdr) => Ok(App {
-                timers: parse_timers(rdr)?,
+                timers: Timers::try_from(rdr)?,
                 state: State::ViewTimers,
                 ..App::default()
             }),
