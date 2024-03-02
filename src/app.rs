@@ -1,11 +1,11 @@
 use crate::tui::Tui;
 use chrono::{DateTime, Local};
+use color_eyre::owo_colors::OwoColorize;
 use color_eyre::{
     eyre::{self, bail},
     Result,
 };
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::text::Span;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -13,10 +13,19 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, BorderType, Padding, Paragraph, Tabs, Widget},
 };
-use std::time::Duration;
-use std::{fs::File, io, ops::Deref};
+use std::{fs::File, io, ops::Deref, time::Duration};
 
 const TIMERS_FILENAME: &str = "countdowns.csv";
+
+trait VerticalAlignment {
+    fn vertical_center(self, render_area: Rect, line_count: u16) -> Self;
+}
+
+impl VerticalAlignment for Paragraph<'_> {
+    fn vertical_center(self, render_area: Rect, line_count: u16) -> Self {
+        self.block(Block::new().padding(Padding::top((render_area.height - line_count) / 2)))
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct App {
@@ -63,9 +72,21 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Result<()> {
         match key_event.code {
             KeyCode::Char('q') | KeyCode::Char('Q') => self.exit = true,
-            KeyCode::Right => self.next_tab(),
-            KeyCode::Left => self.prev_tab(),
             _ => {}
+        }
+        match self.state {
+            State::ViewTimers => match key_event.code {
+                KeyCode::Right => self.next_tab(),
+                KeyCode::Left => self.prev_tab(),
+                KeyCode::Char('N') | KeyCode::Char('n') => {
+                    self.state = State::NewCountdown(NewCountdownState::Name)
+                }
+                _ => {}
+            },
+            State::NewCountdown(_) => match key_event.code {
+                KeyCode::Char('C') | KeyCode::Char('c') => self.state = State::ViewTimers,
+                _ => {}
+            },
         }
         Ok(())
     }
@@ -79,15 +100,16 @@ impl App {
             (self.countdowns.selected_idx + self.countdowns.len() - 1) % self.countdowns.len();
     }
 
-    fn render_view_countdowns(&self, area: Rect, buf: &mut Buffer) {
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(3), Constraint::Fill(1)])
-            .split(area);
-
+    fn render_view_countdowns(
+        &self,
+        header: Rect,
+        header_block: Block,
+        body: Rect,
+        body_block: Block,
+        buf: &mut Buffer,
+    ) {
         let tab_count = self.countdowns.len();
-        let tab_width = (area.width as usize - (tab_count - 1) * 3) / tab_count;
-
+        let tab_width = (header.width as usize - (tab_count - 1) * 3) / tab_count;
         let selected_countdown = self.countdowns.selected();
 
         self.countdowns
@@ -102,12 +124,8 @@ impl App {
                     .fg(selected_countdown.fg_color),
             )
             .select(self.countdowns.selected_idx)
-            .block(
-                Block::bordered()
-                    .title(" Welcome to Uika Countdown! ".bold())
-                    .title_alignment(Alignment::Center),
-            )
-            .render(layout[0], buf);
+            .block(header_block)
+            .render(header, buf);
 
         let color_style = Style::default()
             .bg(selected_countdown.bg_color)
@@ -115,38 +133,62 @@ impl App {
 
         let seconds = (selected_countdown.datetime - Local::now()).num_seconds();
 
-        let countdown_block = Block::bordered()
-            .border_type(BorderType::Double)
-            .title_bottom(
-                Line::from(vec![
-                    " Next Tab".into(),
-                    " <Right>".magenta().bold(),
-                    " Prev Tab".into(),
-                    " <Left>".magenta().bold(),
-                    " New Countdown".into(),
-                    " <N> ".magenta().bold(),
-                    " Exit".into(),
-                    " <?Guess?> ".magenta().bold(),
-                ])
-                .alignment(Alignment::Center),
-            )
-            .title_bottom(Line::from("❤ ").alignment(Alignment::Left))
-            .title_bottom(Line::from("❤ ").alignment(Alignment::Right))
-            .title(Line::from("❤ ").alignment(Alignment::Left))
-            .title(Line::from("❤ ").alignment(Alignment::Right));
+        let instructions = Line::from(vec![
+            " Next Tab".into(),
+            " <Right>".magenta().bold(),
+            " Prev Tab".into(),
+            " <Left>".magenta().bold(),
+            " New Countdown".into(),
+            " <N> ".magenta().bold(),
+            " Exit".into(),
+            " <?Guess?> ".magenta().bold(),
+        ])
+        .alignment(Alignment::Center);
 
-        let inner_area = countdown_block.inner(layout[1]);
-        countdown_block.render(layout[1], buf);
+        let countdown_block = body_block.title_bottom(instructions);
+        let inner_area = countdown_block.inner(body);
+        countdown_block.render(body, buf);
 
         Paragraph::new(Text::from(vec![
             seconds.to_string().underlined().bold().italic().into(),
             "seconds till ".into(),
             selected_countdown.name.clone().bold().italic().into(),
         ]))
-        .block(Block::new().padding(Padding::top((layout[1].height - 4) / 2)))
+        .vertical_center(body, 2)
         .centered()
         .style(color_style)
         .render(inner_area, buf)
+    }
+
+    fn render_new_countdown(
+        &self,
+        header: Rect,
+        header_block: Block,
+        body: Rect,
+        body_block: Block,
+        buf: &mut Buffer,
+    ) {
+        Paragraph::new("Create New Countdown")
+            .bold()
+            .centered()
+            .block(header_block)
+            .render(header, buf);
+
+        let instructions = Line::from(vec![
+            " Cancel".into(),
+            " <C>".magenta().bold(),
+            " Next Input".into(),
+            " <Enter>".magenta().bold(),
+            " Input Color".into(),
+            " <Arrows>".magenta().bold(),
+            " Exit".into(),
+            " <?Guess?> ".magenta().bold(),
+        ])
+        .alignment(Alignment::Center);
+
+        let inner_block = body_block.title_bottom(instructions);
+        let inner_area = inner_block.inner(body);
+        inner_block.render(body, buf);
     }
 }
 
@@ -155,9 +197,29 @@ impl Widget for &App {
     where
         Self: Sized,
     {
+        let [header, body] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(3), Constraint::Fill(1)])
+            .areas(area);
+
+        let header_block = Block::bordered()
+            .title(" Welcome to Uika Countdown! ".bold())
+            .title_alignment(Alignment::Center);
+
+        let body_block = Block::bordered()
+            .border_type(BorderType::Double)
+            .title_bottom(Line::from("❤ ").alignment(Alignment::Left))
+            .title_bottom(Line::from("❤ ").alignment(Alignment::Right))
+            .title(Line::from("❤ ").alignment(Alignment::Left))
+            .title(Line::from("❤ ").alignment(Alignment::Right));
+
         match self.state {
-            State::NewCountdown(_) => {}
-            State::ViewTimers => self.render_view_countdowns(area, buf),
+            State::NewCountdown(_) => {
+                self.render_new_countdown(header, header_block, body, body_block, buf)
+            }
+            State::ViewTimers => {
+                self.render_view_countdowns(header, header_block, body, body_block, buf)
+            }
         }
     }
 }
