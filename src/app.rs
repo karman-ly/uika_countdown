@@ -13,30 +13,30 @@ const TIMERS_FILENAME: &str = "timers.csv";
 #[derive(Debug, Default)]
 pub struct App {
     state: State,
-    timers: Timers,
+    timers: Countdowns,
     exit: bool,
 }
 
 #[derive(Debug, Default)]
-struct Timers {
+struct Countdowns {
     selected_idx: usize,
-    timers: Vec<Timer>,
+    timers: Vec<Countdown>,
 }
 
-impl Deref for Timers {
-    type Target = Vec<Timer>;
+impl Deref for Countdowns {
+    type Target = Vec<Countdown>;
     fn deref(&self) -> &Self::Target {
         &self.timers
     }
 }
 
-impl Timers {
-    fn selected(&self) -> &Timer {
+impl Countdowns {
+    fn selected(&self) -> &Countdown {
         &self[self.selected_idx]
     }
 }
 
-impl TryFrom<csv::Reader<File>> for Timers {
+impl TryFrom<csv::Reader<File>> for Countdowns {
     type Error = eyre::Error;
     fn try_from(mut rdr: csv::Reader<File>) -> Result<Self, Self::Error> {
         let timers = Vec::new();
@@ -44,28 +44,41 @@ impl TryFrom<csv::Reader<File>> for Timers {
             .records()
             .position(|record| record.is_ok_and(|r| &r[3] == "1"))
             .unwrap_or(0);
-        Ok(Timers {
+        Ok(Countdowns {
             selected_idx,
             timers,
         })
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 enum State {
-    #[default]
-    NewTimer,
+    NewCountdown(NewCountdownState),
     ViewTimers,
 }
 
+impl Default for State {
+    fn default() -> Self {
+        Self::NewCountdown(NewCountdownState::Name)
+    }
+}
+
+#[derive(Debug, Default)]
+enum NewCountdownState {
+    #[default]
+    Name,
+    Color,
+    DateTime,
+}
+
 #[derive(Debug)]
-struct Timer {
+struct Countdown {
     name: String,
     color: Color,
     datetime: DateTime<Local>,
 }
 
-impl TryFrom<csv::StringRecord> for Timer {
+impl TryFrom<csv::StringRecord> for Countdown {
     type Error = eyre::Error;
     fn try_from(record: csv::StringRecord) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -80,7 +93,7 @@ impl App {
     pub fn new() -> Result<Self> {
         match csv::Reader::from_path(env::current_dir()?.with_file_name(TIMERS_FILENAME)) {
             Ok(rdr) => Ok(App {
-                timers: Timers::try_from(rdr)?,
+                timers: Countdowns::try_from(rdr)?,
                 state: State::ViewTimers,
                 ..App::default()
             }),
